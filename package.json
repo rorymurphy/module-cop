@@ -1,0 +1,24 @@
+{
+  "name": "module-cop",
+  "version": "0.0.1",
+  "description": "A module to enforce blacklist & whitelists on the modules permitted for execution",
+  "main": "index.js",
+  "scripts": {
+    "build": "./node_modules/.bin/babel src --out-dir dist --copy-files --source-maps",
+    "lint": "eslint *.js && jscs *.js",
+    "test": "jasmine-node test",
+    "debug": "node --inspect-brk node_modules\\jasmine-node\\lib\\jasmine-node\\cli.js test"
+  },
+  "author": "Rory Murphy",
+  "license": "MIT",
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-plugin-transform-async-to-generator": "^6.24.1",
+    "babel-plugin-transform-runtime": "^6.23.0",
+    "babel-preset-env": "^1.6.1",
+    "babel-register": "^6.5.1",
+    "gulp-uglify": "^2.0.0",
+    "jasmine-node": "^1.14.5",
+    "jshint": "^2.9.4"
+  }
+}
