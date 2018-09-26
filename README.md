@@ -31,10 +31,10 @@ cop.enforce( () => require('untrusted.js'));
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| enforcementLevel | int (enumerated by EnforcementLevel) | Determines the method of enforcement:
-WHITELIST_ONLY: Strictly limits module loading to those specified in the whitelist, ignoring the blacklist
-BLACKLIST_ONLY: Allows loading of any module except those specified on the blacklist, ignoring the whitelist
-WHITELIST_PRECEDENCE: Blocks all modules on the blacklist, unless referenced by a whitelisted module. This is useful when you want to permit a module that internally requires access to a lower-level sensitive module (e.g. the 'fs' module). |
+| enforcementLevel | int (enumerated by EnforcementLevel) | Determines the method of enforcement: |
+| | | WHITELIST_ONLY: Strictly limits module loading to those specified in the whitelist, ignoring the blacklist |
+| | | BLACKLIST_ONLY: Allows loading of any module except those specified on the blacklist, ignoring the whitelist |
+| | | WHITELIST_PRECEDENCE: Blocks all modules on the blacklist, unless referenced by a whitelisted module. This is useful when you want to permit a module that internally requires access to a lower-level sensitive module (e.g. the 'fs' module). |
 | whitelist | Array of strings | A read-only view into the current items on the whitelist |
 | blacklist | Array of strings | A read-only view into the current items on the blacklist |
 | substitutions | Object | A read-only key-value map representing any module substitutions |
