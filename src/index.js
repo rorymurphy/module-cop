@@ -1,46 +1,5 @@
-debugger;
 const Module = require('module');
 const path = require('path');
-
-const stateMap = new WeakMap();
-function getMutableState(obj){
-    let state = stateMap.get(obj);
-    if(state.locked){
-        throw new Exception('Module Cop has been locked, no further modifications are allowed');
-    }
-    return state;
-}
-
-if (!Module._load)
-{
-	throw new Error('This version of Node JS is not supported. Unable to locate Module._load.');
-}
-
-if (!Module._resolveFilename)
-{
-	throw new Error('This version of Node JS is not supported. Unable to locate Module.resolveFilename.');
-}
-
-if (!Module._findPath)
-{
-	throw new Error('This version of Node JS is not supported. Unable to locate Module._findPath.')
-}
-
-const originalModulePrototype = Object.assign(Object.create(Module.prototype.prototype || Object), Module.prototype);
-const originalModule = Object.assign(Object.create(originalModulePrototype), Module);
-
-const originalLoad = Module._load;
-const originalPrototypeLoad = Module.prototype.load;
-const originalResolveFilename = Module._resolveFilename;
-const originalFindPath = Module._findPath
-
-function intersect(a, b) {
-    var t;
-    if (b.length > a.length) t = b, b = a, a = t; // indexOf to loop over shorter
-    return a.filter(function (e) {
-        return b.indexOf(e) > -1;
-    });
-}
 
 const EnforcementLevel = Object.freeze({
     WHITELIST_ONLY: 0,
@@ -48,6 +7,15 @@ const EnforcementLevel = Object.freeze({
     WHITELIST_PRECEDENCE: 2,
     WHITELIST_PRECEDENCE_INDIRECT: 3
 });
+
+const stateMap = new WeakMap();
+function getMutableState(obj){
+    let state = stateMap.get(obj);
+    if(state.locked){
+        throw new Error('Module Cop has been locked, no further modifications are allowed');
+    }
+    return state;
+}
 
 class ModuleCop {
     constructor() {
@@ -98,15 +66,15 @@ class ModuleCop {
         delete state.substitute[name];
     }
 
-    lock (){
+    enforce (callback){
         let state = stateMap.get(this);
         state.locked = true;
 
-        return {
-            unlock: () => {
-                let state = stateMap.get(this);
-                state.locked = false;
-            }
+        let enforcer = new Enforcer(this);
+        try{
+            enforcer.enforce(callback);
+        } finally {
+            state.locked = false;
         }
     }
 
@@ -135,7 +103,148 @@ class ModuleCop {
     }
 }
 
-let cop = new ModuleCop();
+class Enforcer {
+
+    constructor(cop){
+        this.moduleStack = [];
+        this.cop = cop;
+    }
+
+    enforce(callback){
+        this.originalModulePrototype = Object.assign(Object.create(Module.prototype.prototype || Object), Module.prototype);
+        this.originalModule = Object.assign(Object.create(this.originalModulePrototype), Module);
+        
+        this.originalLoad = Module._load;
+        this.originalPrototypeLoad = Module.prototype.load;
+        this.originalResolveFilename = Module._resolveFilename;
+        this.originalFindPath = Module._findPath;
+
+        Module._load = this.moduleLoad.bind(this);
+        Module._resolveFilename = this.resolveFilename.bind(this);
+        Module._findPath = this.findPath.bind(this);
+
+        callback();
+
+        Module._load = this.originalLoad;
+        Module._resolveFilename = this.originalResolveFilename;
+        Module._findPath = this.originalFindPath;
+    }
+
+    moduleLoad (request, parent, isMain){
+        let isModuleRequest = isModuleReference(request);
+        switch(this.cop.enforcementLevel){
+            case EnforcementLevel.WHITELIST_ONLY:
+                let chain = [];
+                let curr = parent;
+                while(curr){
+                    if(curr.request){
+                        chain.push(curr.request);
+                    }
+                    curr = curr.parent;
+                }
+                console.log('Requested: ' + request);
+                console.log('Load chain: ' + JSON.stringify(chain));
+                console.log('White list: ' + JSON.stringify(this.cop.whitelist));
+                if(isModuleRequest && !this.cop.whitelist.includes(request) && intersect(this.cop.whitelist, chain).length < 1){
+                    throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
+                }
+                break; 
+            case EnforcementLevel.BLACKLIST_ONLY:
+                if(isModuleRequest && this.cop.blacklist.includes(request)){
+                    throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
+                }
+                break;
+            case EnforcementLevel.WHITELIST_PRECEDENCE: {
+                if(isModuleRequest && this.cop.blacklist.includes(request) && !isRequestedByWhitelistedModule(request)){
+                    throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
+                }
+                break;
+            }
+        }
+
+        if(isModuleRequest && this.cop.substitutions.hasOwnProperty(request)){
+            return this.cop.substitutions[request];
+        }
+    
+        if('module' === request)
+        {
+            if(this.cop.whitelist.includes(request)){
+                return originalModule;
+            }else{
+                let moduleClone = Object.assign(Object.create(Module.prototype), Module);
+                return moduleClone
+            }
+        }
+    
+        return this.originalModule._load.apply(this.originalModule, [request, parent, isMain]);
+    }
+
+    resolveFilename(...parameters) {
+        const request = parameters[0];
+        const parent = parameters[1];
+
+        //console.log('Filename: ' + request);
+
+        // take note of the require() caller
+        // (the module in which this require() call originated)
+        this.require_caller = parent;
+
+        let result = this.originalModule._resolveFilename.apply(this.originalModule, parameters);
+        if(isModuleReference(request)){
+            this.moduleStack.push({name: request, dirname: path.dirname(result), filename: path.basename(result)});
+        }
+
+        let isWhitelisted = false;
+        let parentIndex = -1;
+        for(let i = this.moduleStack.length - 1; i >= 0; i--){
+            let module = this.moduleStack[i];
+            if(result.startsWith(module.dirname)){
+                isWhitelisted = true;
+                this.moduleStack = this.moduleStack.slice(0, i);
+                break;
+            }
+
+            if(parentIndex === -1 && parent.filename.startsWith(module.dirname)){
+                parentIndex = i;
+            }
+        }
+
+        //The requested file was not part of an allowed module, but the parent was, so update the module load stack
+        if(!isWhitelisted && parentIndex >= 0){
+            this.moduleStack = this.moduleStack.slice(0, parentIndex);
+        }
+
+        if(this.cop.enforcementLevel == EnforcementLevel.WHITELIST_ONLY && !isWhitelisted){
+            throw new Error('Attempted to load file not part of a whitelisted module. File path: ' + result);
+        }
+
+        return result;
+    }
+
+    findPath (...parameters){
+        const request = parameters[0];
+
+        console.log('Request: ' + request);
+
+
+        // original Node.js loader
+        const filename = this.originalModule._findPath.apply(undefined, parameters);
+        if (filename !== false)
+        {
+            return filename;
+        }
+
+        return false
+    }
+}
+
+function intersect(a, b) {
+    var t;
+    if (b.length > a.length) t = b, b = a, a = t; // indexOf to loop over shorter
+    return a.filter(function (e) {
+        return b.indexOf(e) > -1;
+    });
+}
 
 function isModuleReference(name){
     return (typeof name === 'string' && !name.match(/^\.|^[a-zA-Z]:|[/\\]/));
@@ -155,163 +264,4 @@ function isRequestedByWhitelistedModule(request){
     return result;
 }
 
-//Don't assign it here, because we need to ensure that the methods are
-//overridden before cloning.
-let moduleClone = null;
-let moduleStack = [];
-Module._load = function(request, parent, isMain){
-    let isModuleRequest = isModuleReference(request);
-    switch(cop.enforcementLevel){
-        case EnforcementLevel.WHITELIST_ONLY:
-            let chain = [];
-            let curr = parent;
-            while(curr){
-                if(curr.request){
-                    chain.push(curr.request);
-                }
-                curr = curr.parent;
-            }
-            console.log('Requested: ' + request);
-            console.log('Load chain: ' + JSON.stringify(chain));
-            console.log('White list: ' + JSON.stringify(cop.whitelist));
-            if(isModuleRequest && !cop.whitelist.includes(request) && intersect(cop.whitelist, chain).length < 1){
-                throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
-            }
-            break; 
-        case EnforcementLevel.BLACKLIST_ONLY:
-            if(isModuleRequest && cop.blacklist.includes(request)){
-                throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
-            }
-            break;
-        case EnforcementLevel.WHITELIST_PRECEDENCE: {
-            if(isModuleRequest && cop.blacklist.includes(request) && !isRequestedByWhitelistedModule(request)){
-                throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
-            }
-            break;
-        }
-
-
-    }
-
-
-    let substitutions = cop.substitutions;
-    if(isModuleRequest && cop.substitutions.hasOwnProperty(request)){
-        return substitutions[request];
-    }
-
-    moduleClone = moduleClone || Object.assign(Object.create(Module.prototype), Module);
-
-    if('module' === request)
-    {
-        if(cop.whitelist.includes(request)){
-            return originalModule;
-        }else{
-            return moduleClone
-        }
-    }
-
-
-    return originalModule._load.apply(this, [request, parent, isMain]);
-};
-
-var require_caller = null;
-// instrument Module._resolveFilename
-// https://github.com/nodejs/node/blob/master/lib/module.js#L322
-//
-// `arguments` would conflict with Babel, therefore `...parameters`
-//
-// const native_module = require('native_module')
-Module._resolveFilename = function(...parameters)
-{
-	const request = parameters[0];
-	const parent = parameters[1];
-
-    //console.log('Filename: ' + request);
-
-	// take note of the require() caller
-	// (the module in which this require() call originated)
-    require_caller = parent;
-
-    let result = originalModule._resolveFilename.apply(this, parameters);
-    if(isModuleReference(request)){
-        moduleStack.push({name: request, dirname: path.dirname(result), filename: path.basename(result)});
-    }
-
-    let isWhitelisted = false;
-    let parentIndex = -1;
-    for(let i = moduleStack.length - 1; i >= 0; i--){
-        let module = moduleStack[i];
-        if(result.startsWith(module.dirname)){
-            isWhitelisted = true;
-            moduleStack = moduleStack.slice(0, i);
-            break;
-        }
-
-        if(parentIndex === -1 && parent.startsWith(module.dirname)){
-            parentFound = true;
-            parentIndex = i;
-        }
-    }
-
-    //The requested file was not part of an allowed module, but the parent was, so update the module load stack
-    if(!isWhitelisted && parentIndex >= 0){
-        moduleStack = moduleStack.slice(0, parentIndex);
-    }
-
-     
-    if(cop.enforcementLevel == EnforcementLevel.WHITELIST_ONLY && !isWhitelisted){
-        throw new Error('Attempted to load file not part of a whitelisted module. File path: ' + result);
-    }
-
-    return result;
-};
-
-// instrument Module._findPath
-// https://github.com/nodejs/node/blob/master/lib/module.js#L335-L341
-//
-// `arguments` would conflict with Babel, therefore `...parameters`
-//
-Module._findPath = (...parameters) =>
-{
-	const request = parameters[0];
-	// const paths = parameters[1]
-
-    // preceeding resolvers
-    console.log('Request: ' + request);
-	// if (require_hacker.global_hooks_enabled)
-	// {
-	// 	for (let resolver of require_hacker.preceding_path_resolvers)
-	// 	{
-	// 		const resolved_path = resolver(request, require_caller)
-	// 		if (exists(resolved_path))
-	// 		{
-	// 			return resolved_path
-	// 		}
-	// 	}
-	// }
-
-	// original Node.js loader
-	const filename = originalModule._findPath.apply(undefined, parameters);
-	if (filename !== false)
-	{
-		return filename;
-	}
-
-	// rest resolvers
-	// if (require_hacker.global_hooks_enabled)
-	// {
-	// 	for (let resolver of require_hacker.path_resolvers)
-	// 	{
-	// 		const resolved = resolver.resolve(request, require_caller)
-	// 		if (exists(resolved))
-	// 		{
-	// 			return resolved
-	// 		}
-	// 	}
-	// }
-
-	return false
-};
-
-export {EnforcementLevel};
-export default cop;
+export {ModuleCop, EnforcementLevel};
