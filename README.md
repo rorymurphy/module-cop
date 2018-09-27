@@ -38,3 +38,15 @@ cop.enforce( () => require('untrusted.js'));
 | whitelist | Array of strings | A read-only view into the current items on the whitelist |
 | blacklist | Array of strings | A read-only view into the current items on the blacklist |
 | substitutions | Object | A read-only key-value map representing any module substitutions |
+
+## Methods
+
+| Name | Arguments | Description |
+| ---- | --------- | ----------- |
+| addToBlacklist | moduleName | Adds a module to the blacklist. |
+| removeFromBlacklist | moduleName | Removes a module from the blacklist. |
+| addToWhitelist | moduleName | Adds a module to the whitelist |
+| removeFromWhitelist | moduleName | Removes a module from the whitelist |
+| addModuleSubstitution | moduleName, substitute | Adds a module to the set of substitutions |
+| removeModuleSubstitution | moduleName | Removes a module from the set of substitutions |
+| enforce | callback | Enforces the rules defined for the Module Cop instance for the block of code passed in through the callback argument |
