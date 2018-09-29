@@ -1,6 +1,6 @@
 {
   "name": "module-cop",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "description": "A module to enforce blacklist & whitelists on the modules permitted for execution",
   "main": "index.js",
   "scripts": {

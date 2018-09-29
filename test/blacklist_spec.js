@@ -3,11 +3,10 @@ const ModuleCop = mc.ModuleCop;
 const EnforcementLevel = mc.EnforcementLevel;
 const Module = require('module');
 
-const cop = new ModuleCop();
-
 debugger;
 describe('Module cop', function(){
     it('should prevent loading any non-whitelisted module in WHITELIST_ONLY modes', function(){
+        let cop = new ModuleCop();
         cop.enforcementLevel = EnforcementLevel.WHITELIST_ONLY;
         cop.addToWhitelist('exit');
 
@@ -32,7 +31,9 @@ describe('Module cop', function(){
 
         cop.removeFromWhitelist('exit');
     }),
+    
     it('should prevent modification when locked', function(){
+        let cop = new ModuleCop();
         cop.addToBlacklist('jshint');
         cop.enforce(() => {
             let errorThrown = false;
@@ -47,6 +48,7 @@ describe('Module cop', function(){
         cop.removeFromBlacklist('jshint');        
     }),
     it('should prevent loading of a blacklisted module in WHITELIST_PRECEDENCE mode', function(){
+        let cop = new ModuleCop();
         cop.enforcementLevel = EnforcementLevel.WHITELIST_PRECEDENCE;
 
         cop.enforce(() => {
@@ -97,6 +99,7 @@ describe('Module cop', function(){
     });
 
     it('should return a cloned version of Module rather than the real one', function(){
+        let cop = new ModuleCop();
         cop.enforce(() => {
             let mod = require('module');
             expect(mod).not.toEqual(Module);
@@ -104,6 +107,7 @@ describe('Module cop', function(){
         });
     });
     it('should return the specified object as a substitute', function(){
+        let cop = new ModuleCop();
         let fakeJsHint = {
             this: 'is a test object'
         };

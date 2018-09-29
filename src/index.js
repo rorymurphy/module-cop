@@ -142,9 +142,7 @@ class Enforcer {
                     }
                     curr = curr.parent;
                 }
-                console.log('Requested: ' + request);
-                console.log('Load chain: ' + JSON.stringify(chain));
-                console.log('White list: ' + JSON.stringify(this.cop.whitelist));
+
                 if(isModuleRequest && !this.cop.whitelist.includes(request) && intersect(this.cop.whitelist, chain).length < 1){
                     throw new Error('The loading of module "' + request + '" was prevented due to security restrictions');
                 }
@@ -182,8 +180,6 @@ class Enforcer {
     resolveFilename(...parameters) {
         const request = parameters[0];
         const parent = parameters[1];
-
-        //console.log('Filename: ' + request);
 
         // take note of the require() caller
         // (the module in which this require() call originated)
@@ -224,10 +220,7 @@ class Enforcer {
     findPath (...parameters){
         const request = parameters[0];
 
-        console.log('Request: ' + request);
-
-
-        // original Node.js loader
+        // call the original loader
         const filename = this.originalModule._findPath.apply(undefined, parameters);
         if (filename !== false)
         {
