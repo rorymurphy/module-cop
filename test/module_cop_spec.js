@@ -1,4 +1,4 @@
-const mc = require('../index');
+const mc = require('..');
 const ModuleCop = mc.ModuleCop;
 const EnforcementLevel = mc.EnforcementLevel;
 const Module = require('module');
@@ -31,7 +31,75 @@ describe('Module cop', function(){
 
         cop.removeFromWhitelist('exit');
     }),
+
+    it('should prevent allow whitelisting of NodeJS core modules', function(){
+        let cop = new ModuleCop();
+        cop.enforcementLevel = EnforcementLevel.WHITELIST_ONLY;
+        cop.addToWhitelist('console');
+
+        cop.enforce( () => {
+            let errorThrown = false;
+            try{
+                require('console');
+            }catch(err){
+                errorThrown = true;
+            }
+
+            expect(errorThrown).toBe(false);
+        });
+
+        cop.removeFromWhitelist('exit');
+    }),
+
+    it('should allow nested cops', function(){
+        let cop = new ModuleCop();
+        cop.enforcementLevel = EnforcementLevel.WHITELIST_ONLY;
+        cop.addToWhitelist('exit');
+        cop.addToWhitelist('console');
+
+        cop.enforce( () => {
+            let innerCop = new ModuleCop();
+            innerCop.enforcementLevel = EnforcementLevel.WHITELIST_ONLY;
+            innerCop.addToWhitelist('exit');
+            let errorThrown = false;
+            try{
+                require('exit');
+            }catch(err){
+                errorThrown = true;
+            }
     
+            errorThrown = false;
+            expect(errorThrown).toBe(false);
+            try{
+                require('console');
+            }catch(err){
+                errorThrown = true;
+            }
+
+            expect(errorThrown).toBe(false);
+
+            innerCop.enforce(() => {
+                errorThrown = true;
+                try{
+                    require('exit');
+                }catch(err){
+                    errorThrown = true;
+                }
+        
+                errorThrown = false;
+                expect(errorThrown).toBe(false);
+                try{
+                    require('console');
+                }catch(err){
+                    errorThrown = true;
+                }
+    
+                expect(errorThrown).toBe(true);
+            });
+        });
+
+        cop.removeFromWhitelist('exit');
+    }),
     it('should prevent modification when locked', function(){
         let cop = new ModuleCop();
         cop.addToBlacklist('jshint');

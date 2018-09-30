@@ -123,8 +123,11 @@ class Enforcer {
         Module._resolveFilename = this.resolveFilename.bind(this);
         Module._findPath = this.findPath.bind(this);
 
+        this.moduleClone = Object.assign(Object.create(Module.prototype), Module);
+
         callback();
 
+        this.moduleClone = null;
         Module._load = this.originalLoad;
         Module._resolveFilename = this.originalResolveFilename;
         Module._findPath = this.originalFindPath;
@@ -169,8 +172,7 @@ class Enforcer {
             if(this.cop.whitelist.includes(request)){
                 return originalModule;
             }else{
-                let moduleClone = Object.assign(Object.create(Module.prototype), Module);
-                return moduleClone
+                return this.moduleClone
             }
         }
     
@@ -187,6 +189,10 @@ class Enforcer {
 
         let result = this.originalModule._resolveFilename.apply(this.originalModule, parameters);
         if(isModuleReference(request)){
+            //Special case where the module is a NodeJS built-in
+            if(isModuleReference(result)){
+                return result;
+            }
             this.moduleStack.push({name: request, dirname: path.dirname(result), filename: path.basename(result)});
         }
 
