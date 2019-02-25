@@ -1,6 +1,27 @@
 const Module = require('module');
 const path = require('path');
 
+const functionApplyMethod = Function.prototype.apply;
+
+let proxyInstanceMethod = (func) => {
+    return (that, ...rest) => {
+        let tempApply = Function.prototype.apply;
+        Function.prototype.apply = functionApplyMethod;
+        let result = func.apply(that, rest);
+        Function.prototype.apply = tempApply;
+        return result;
+    }
+};
+
+const arraySlice = proxyInstanceMethod(Array.prototype.slice);
+const arraySplice = proxyInstanceMethod(Array.prototype.splice);
+const arrayForEach = proxyInstanceMethod(Array.prototype.forEach);
+var objectHasOwnProperty = proxyInstanceMethod(Object.hasOwnProperty);
+
+const objectAssign = Object.assign;
+
+const globals = require('./globals');
+
 const EnforcementLevel = Object.freeze({
     WHITELIST_ONLY: 0,
     BLACKLIST_ONLY: 1,
@@ -39,7 +60,7 @@ class ModuleCop {
         let state = getMutableState(this);
         let index = state.blacklist.indexOf(name);
         if(index >= 0){
-            state.blacklist.splice(index, 1);
+            arraySplice(state.blacklist, index, 1);
         }
     }
 
@@ -52,7 +73,7 @@ class ModuleCop {
         let state = getMutableState(this);
         let index = state.whitelist.indexOf(name);
         if(index >= 0){
-            state.whitelist.splice(index, 1);
+            arraySplice(state.whitelist, index, 1);
         }
     }
 
@@ -89,12 +110,12 @@ class ModuleCop {
 
     get whitelist() {
         let state = stateMap.get(this);
-        return state.whitelist.slice(0);
+        return arraySlice(state.whitelist, 0);
     }
 
     get blacklist() {
         let state = stateMap.get(this);
-        return state.blacklist.slice(0);
+        return arraySlice(state.blacklist, 0);
     }
 
     get substitutions(){
@@ -124,13 +145,80 @@ class Enforcer {
         Module._findPath = this.findPath.bind(this);
 
         this.moduleClone = Object.assign(Object.create(Module.prototype), Module);
-
+        //let globalState = this.captureGlobalState();
         callback();
-
+        //this.restoreGlobalState(globalState);
         this.moduleClone = null;
         Module._load = this.originalLoad;
         Module._resolveFilename = this.originalResolveFilename;
         Module._findPath = this.originalFindPath;
+    }
+
+    captureGlobalState(){
+        let state = {};
+        
+        state.global = global;
+        globals.fundamentalValues.forEach((name) => {
+            state[name] = global[name];
+        });
+
+        globals.globalFunctions.forEach((name) => {
+            state[name] = global[name];
+        });
+
+        globals.globalObjects.forEach((name) => {
+            let g = global[name];
+            if(!g){
+                console.debug('Unable to resolve expected global object: ' + name);
+            }else{
+                state[name] = objectAssign({}, g);
+                state[name].__protoObject = g.prototype;
+                state[name].prototype = objectAssign({}, g.prototype);
+            }
+        });
+
+        return state;
+    }
+
+    restoreGlobalState(state){
+        global = state.global;
+
+        arrayForEach(globals.fundamentalValues, (name) => {
+            global[name] = state[name];
+        });
+
+        arrayForEach(globals.globalFunctions, (name) => {
+            global[name] = state[name];
+        });
+
+        arrayForEach(globals.globalObjects, (name) => {
+            if(!state[name]){
+                delete global[name];
+                return;
+            }
+            arrayForEach(global[name], (key) => {
+                delete global[name][key];
+            });
+
+            //Have to check first to account for some classes whose prorotypes are readonly (e.g. Object)
+            if(global[name].prototype !== state[name].__protoObject){
+                global[name].prototype = state[name].__protoObject;
+            }
+
+            if(state[name].__protoObject){
+                for(let key in global[name].prototype){
+                    if(!objectHasOwnProperty(state[name].prototype, key)){
+                        delete global[name].prototype[key];
+                    }
+                };
+                for(let key in state[name].prototype){
+                    //Have to check first to account for readonly methods/properties, which will not have changed.
+                    if(global[name].prototype[key] !== state[name].prototype[key]){
+                        global[name].prototype[key] = state[name].prototype[key];
+                    }
+                }
+            }
+        });        
     }
 
     moduleLoad (request, parent, isMain){
@@ -202,7 +290,7 @@ class Enforcer {
             let module = this.moduleStack[i];
             if(result.startsWith(module.dirname)){
                 isWhitelisted = true;
-                this.moduleStack = this.moduleStack.slice(0, i);
+                this.moduleStack = arraySlice(this.moduleStack, 0, i);
                 break;
             }
 
@@ -213,7 +301,7 @@ class Enforcer {
 
         //The requested file was not part of an allowed module, but the parent was, so update the module load stack
         if(!isWhitelisted && parentIndex >= 0){
-            this.moduleStack = this.moduleStack.slice(0, parentIndex);
+            this.moduleStack = arraySlice(this.moduleStack, 0, parentIndex);
         }
 
         if(this.cop.enforcementLevel == EnforcementLevel.WHITELIST_ONLY && !isWhitelisted){
