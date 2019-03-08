@@ -19,6 +19,10 @@ const arrayForEach = proxyInstanceMethod(Array.prototype.forEach);
 var objectHasOwnProperty = proxyInstanceMethod(Object.hasOwnProperty);
 
 const objectAssign = Object.assign;
+const objectCreate = Object.create;
+const objectGetOwnPropertyNames = Object.getOwnPropertyNames;
+const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+const objectDefineProperty = Object.defineProperty;
 
 const globals = require('./globals');
 
@@ -131,7 +135,7 @@ class ModuleCop {
 
     get substitutions(){
         let state = stateMap.get(this);
-        return Object.assign({}, state.substitute);
+        return objectAssign({}, state.substitute);
     }
 }
 
@@ -143,8 +147,8 @@ class Enforcer {
     }
 
     enforce(callback){
-        this.originalModulePrototype = Object.assign(Object.create(Module.prototype.prototype || Object), Module.prototype);
-        this.originalModule = Object.assign(Object.create(this.originalModulePrototype), Module);
+        this.originalModulePrototype = objectAssign(objectCreate(Module.prototype.prototype || Object), Module.prototype);
+        this.originalModule = objectAssign(objectCreate(this.originalModulePrototype), Module);
         
         this.originalLoad = Module._load;
         this.originalPrototypeLoad = Module.prototype.load;
@@ -155,7 +159,7 @@ class Enforcer {
         Module._resolveFilename = this.resolveFilename.bind(this);
         Module._findPath = this.findPath.bind(this);
 
-        this.moduleClone = Object.assign(Object.create(Module.prototype), Module);
+        this.moduleClone = objectAssign(objectCreate(Module.prototype), Module);
         let globalState = null;
         if(this.cop.protectGlobals){
             globalState = this.captureGlobalState();
@@ -189,17 +193,17 @@ class Enforcer {
                 let clone = {};
                 if(g.prototype){
                     clone.prototype = {}
-                    arrayForEach(Object.getOwnPropertyNames(g.prototype), (key) => {
-                        let clonedDescriptor = objectAssign({}, Object.getOwnPropertyDescriptor(g.prototype, key));
-                        Object.defineProperty(clone.prototype, key, clonedDescriptor);
+                    arrayForEach(objectGetOwnPropertyNames(g.prototype), (key) => {
+                        let clonedDescriptor = objectAssign({}, objectGetOwnPropertyDescriptor(g.prototype, key));
+                        objectDefineProperty(clone.prototype, key, clonedDescriptor);
                     });
-                    //Object.defineProperties(clone.prototype, Object.getOwnPropertyDescriptors(g.prototype));
+                    //Object.defineProperties(clone.prototype, objectGetOwnPropertyDescriptors(g.prototype));
                 }
 
-                arrayForEach(Object.getOwnPropertyNames(g), (key) => {
+                arrayForEach(objectGetOwnPropertyNames(g), (key) => {
                     if(key === 'prototype'){return;}
-                    let clonedDescriptor = objectAssign({}, Object.getOwnPropertyDescriptor(g, key));
-                    Object.defineProperty(clone, key, clonedDescriptor);
+                    let clonedDescriptor = objectAssign({}, objectGetOwnPropertyDescriptor(g, key));
+                    objectDefineProperty(clone, key, clonedDescriptor);
                 });
                 clone.__protoObject = g.prototype;
                 state[name] = clone;
@@ -229,16 +233,16 @@ class Enforcer {
             let gObj = global[name];
             let sObj = state[name];
 
-            arrayForEach(Object.getOwnPropertyNames(gObj), (key) => {
+            arrayForEach(objectGetOwnPropertyNames(gObj), (key) => {
                 if(!objectHasOwnProperty(sObj, key)){
                     delete gObj[key];
                 }
             });
 
-            arrayForEach(Object.getOwnPropertyNames(sObj), (key) => {
+            arrayForEach(objectGetOwnPropertyNames(sObj), (key) => {
                 if(key == 'prototype' || key == '__protoObject'){return;}
                 if(gObj[key] !== sObj[key] && !(isNaN(gObj[key]) && isNaN(sObj[key]))){
-                    Object.defineProperty(gObj, Object.getOwnPropertyDescriptor(sObj, key));
+                    objectDefineProperty(gObj, objectGetOwnPropertyDescriptor(sObj, key));
                 }
             });
 
@@ -248,25 +252,25 @@ class Enforcer {
             }
 
             if(state[name].__protoObject){
-                arrayForEach(Object.getOwnPropertyNames(gObj.prototype), (key) => {
+                arrayForEach(objectGetOwnPropertyNames(gObj.prototype), (key) => {
                     if(!objectHasOwnProperty(sObj.prototype, key)){
                         delete gObj.prototype[key];
                     }
                 });
 
-                arrayForEach(Object.getOwnPropertyNames(sObj.prototype), (key) => {
+                arrayForEach(objectGetOwnPropertyNames(sObj.prototype), (key) => {
                     //Have to check first to account for readonly methods/properties, which will not have changed.
                     if(name == 'Function' && (key == 'arguments' || key == 'caller' || key == 'callee')){return;}
-                        let gDesc = Object.getOwnPropertyDescriptor(gObj.prototype, key);
-                        let sDesc = Object.getOwnPropertyDescriptor(sObj.prototype, key);
+                        let gDesc = objectGetOwnPropertyDescriptor(gObj.prototype, key);
+                        let sDesc = objectGetOwnPropertyDescriptor(sObj.prototype, key);
                         if(gDesc.value !== sDesc.value || gDesc.get !== sDesc.get || gDesc.set !== sDesc.set || gDesc.writable !== sDesc.writable
                             || gDesc.configurable !== sDesc.configurable || gDesc.enumerable !== sDesc.enumerable){
                                 delete gObj.prototype[key];
-                                Object.defineProperty(gObj.prototype, key, Object.getOwnPropertyDescriptor(sObj.prototype, key));                                
+                                objectDefineProperty(gObj.prototype, key, objectGetOwnPropertyDescriptor(sObj.prototype, key));                                
                             }
                         // if(gObj.prototype[key] !== sObj.prototype[key]){
                         //     delete gObj.prototype[key];
-                        //     Object.defineProperty(gObj.prototype, Object.getOwnPropertyDescriptor(sObj.prototype, key));
+                        //     objectDefineProperty(gObj.prototype, objectGetOwnPropertyDescriptor(sObj.prototype, key));
                         // }
                 });
             }
