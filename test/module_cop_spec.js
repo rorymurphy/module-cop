@@ -166,24 +166,24 @@ describe('Module cop', function(){
         expect(errorThrown).toEqual(true);
     });
 
-    // it('should prevent code from tampering with global variables, methods and objects', ()=>{
-    //     let cop = new ModuleCop();
-    //     cop.enforcementLevel = EnforcementLevel.WHITELIST_PRECEDENCE;
-    //     cop.addToBlacklist('fs');
-    //     let errorThrown = false;
-    //     let origArraySlice = Array.prototype.slice;
-    //     try {
-    //         cop.enforce(() => {
-    //             require('./resources/naughty_module.js');
-    //         });
-    //         let someArray = [1, 2, 3];
-    //         let copiedArray = someArray.slice(0);
-    //     }catch(err){
-    //         errorThrown = true;
-    //     }
-    //     expect(Array.prototype.slice).toEqual(origArraySlice);
-    //     expect(errorThrown).toEqual(false);
-    // });
+    it('should prevent code from tampering with global variables, methods and objects', ()=>{
+        let cop = new ModuleCop();
+        cop.enforcementLevel = EnforcementLevel.WHITELIST_PRECEDENCE;
+        cop.addToBlacklist('fs');
+        let errorThrown = false;
+        let origArraySlice = Array.prototype.slice;
+        try {
+            cop.enforce(() => {
+                require('./resources/naughty_module.js');
+            });
+            let someArray = [1, 2, 3];
+            let copiedArray = someArray.slice(0);
+        }catch(err){
+            errorThrown = true;
+        }
+        expect(Array.prototype.slice).toEqual(origArraySlice);
+        expect(errorThrown).toEqual(false);
+    });
     it('should return a cloned version of Module rather than the real one', function(){
         let cop = new ModuleCop();
         cop.enforce(() => {
